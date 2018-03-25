@@ -23,7 +23,7 @@ class EVMApp(App):
         self.number = None
         self.evmgrid = None
         
-        self.client = pymongo.MongoClient("mongodb://localhost:27017")
+        self.client = pymongo.MongoClient("mongodb://localhost:27017/")
         self.database = self.client.Database
         self.result = None
         
@@ -174,6 +174,7 @@ class EVMApp(App):
                 if s == None:
                     raise IOError
         except IOError:
+            self.result.insert_one({'name': 'counter', 'votes': 0})
             for i in self.candidates:
                 self.result.insert_one({"name": i, "votes":0})
 
@@ -244,7 +245,7 @@ class EVMApp(App):
                 result_grid.add_widget(Label(text = str(doc['votes']), font_size = 24))
             a = self.result.find_one({'name': 'counter'})
             result_grid.add_widget(Label(text = "Number of Voters", font_size = 32))
-            result_grid.add_widget(Label(text = a['votes'], font_size = 32))
+            result_grid.add_widget(Label(text = str(a['votes']), font_size = 32))
             scrollbar = ScrollView()
             scrollbar.add_widget(result_grid)
             result = Popup(title = "Results", content = scrollbar)
@@ -254,7 +255,7 @@ class EVMApp(App):
             self.result.update_many({'name': {'$exists': True}}, {'$set': {'votes': 0}})
             p.content.text = ""
         elif passcode == "factoryreset":
-            self.database.drop()
+            self.client.drop_database(self.database)
             p.content.text = ""
             UpdateEVM().Update()
         elif passcode == "settings":
