@@ -22,7 +22,20 @@ class EVMApp(App):
         super(EVMApp, self).__init__(**kwargs)
         self.number = None
         self.evmgrid = None
-        
+
+        try:
+            ptr = open("connection.dat", "r")
+            connectString = ptr.read()
+            ptr.close()
+            connectString.strip()
+            if connectString == "" or connectString == None:
+                connectString = "mongodb://localhost:27017/"
+        except:
+            connectString = "mongodb://localhost:27017/"
+            ptr = open("connection.dat", "c")
+            ptr.write(connectString)
+            ptr.close()
+
         self.client = pymongo.MongoClient("mongodb://localhost:27017/")
         self.database = self.client.Database
         self.result = None
