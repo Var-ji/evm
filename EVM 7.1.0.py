@@ -64,7 +64,7 @@ class EVMApp(App):
         self.im_path = ""
         self.school = ""
         self.code1 = ""
-        self.code3 = ""
+        self.code2 = ""
         self.json = '''
         [
             {
@@ -104,13 +104,6 @@ class EVMApp(App):
             },
             {
                 "type": "string",
-                "title": "Where should the results be stored?",
-                "desc": "Specify the path where the results should be stored. Note that if there is an I/O error, it will be stored in the default location without any indication. Note that the file name must also be mentioned.",
-                "section": "EVM",
-                "key": "path"
-            },
-            {
-                "type": "string",
                 "title": "Image of logo to be loaded",
                 "desc": "Specify the path where the logo is stored. Note that if there is an I/O error, no image will be loaded. Note that the file name must also be mentioned. Supported formats are .jpg, .png and .bmp",
                 "section": "EVM",
@@ -128,7 +121,7 @@ class EVMApp(App):
                 "title": "Password for viewing the results",
                 "desc": "Set the password for viewing the results.",
                 "section": "EVM",
-                "key": "code3"
+                "key": "code2"
             }
         ]
         '''
@@ -139,11 +132,10 @@ class EVMApp(App):
             db = anydbm.open("config.db", "r")
             color1 = db["color"]
             self.school = db["school"]
-            self.path = db["path"]
             self.im_path = db["image"]
             self.post = db["post"]
             self.code1 = db["voters"]
-            self.code3 = db["results"]
+            self.code2 = db["results"]
             db.close()
             try:
                 if color1.startswith('#'):
@@ -159,19 +151,17 @@ class EVMApp(App):
         except:
              self.color = "FFFFFF"
              self.post = "Unknown"
-             self.path = "results.db"
              self.im_path = "logo.jpg"
              self.school = "Unknown"
-             self.code1 = "jvoter"
-             self.code3 = "results"
+             self.code1 = "voting"
+             self.code2 = "results"
              db = anydbm.open("config.db", "c")
              db["color"] = self.color
              db["school"] = self.school
-             db["path"] = self.path
              db["image"] = self.im_path
              db["post"] = self.post
              db["voters"] = self.code1
-             db["results"] = self.code3
+             db["results"] = self.code2
              s = ""
              for i in self.candidates:
                  s = s + i + ";"
@@ -199,14 +189,12 @@ class EVMApp(App):
             self.post = value
         elif key == "p_col":
             self.color = value
-        elif key == "path":
-            self.path = value
         elif key == "im_path":
             self.im_path = value
         elif key == "code1":
             self.code1 = value
-        elif key == "code3":
-            self.code3 = value
+        elif key == "code2":
+            self.code2 = value
 
        
     def save_settings(self, setting):
@@ -216,10 +204,9 @@ class EVMApp(App):
         db["post"] = self.post
         db["color"] = self.color
         db["school"] = self.school
-        db["path"] = self.path
         db["image"] = self.im_path
         db["voters"] = self.code1
-        db["results"] = self.code3
+        db["results"] = self.code2
         db.close()
         self.close_settings()
         UpdateEVM().Update()
@@ -229,9 +216,9 @@ class EVMApp(App):
         s = Settings()
         config = ConfigParser()
         try:
-            config.setdefaults('EVM', {'school': self.school, 'names': self.temp, 'post': self.post, 'p_col': self.color, 'path': self.path, 'im_path': self.im_path, "code1": self.code1, "code3": self.code3, 'number':self.number})
+            config.setdefaults('EVM', {'school': self.school, 'names': self.temp, 'post': self.post, 'p_col': self.color, 'im_path': self.im_path, "code1": self.code1, "code2": self.code2, 'number':self.number})
         except:
-            config.setdefaults('EVM', {'school': 'Unknown', 'names': self.temp, 'post': "Unknown", 'p_col': 'FFFFFF', 'path': self.path, 'im_path': self.im_path, "code1": "jvoter", "code3": "results", 'number':self.number})
+            config.setdefaults('EVM', {'school': 'Unknown', 'names': self.temp, 'post': "Unknown", 'p_col': 'FFFFFF', 'im_path': self.im_path, "code1": "voting", "code2": "results", 'number':self.number})
         s.add_json_panel('EVM', config, data = self.json)
         s.bind(on_config_change = self.settings_change)
         setting = Popup(title = "Settings", content = s)
@@ -246,7 +233,7 @@ class EVMApp(App):
         elif passcode == "exitevm":
             p.dismiss()
             sys.exit()
-        elif passcode == self.code3:
+        elif passcode == self.code2:
             res = list()
             result_grid = GridLayout(cols = 2, padding = [50, 50, 50, 50], spacing = [5, 50], size_hint_y = None)
             for btn in self.buttons:
@@ -256,6 +243,9 @@ class EVMApp(App):
             for doc in res:
                 result_grid.add_widget(Label(text = doc['name'], font_size = 24))
                 result_grid.add_widget(Label(text = str(doc['votes']), font_size = 24))
+            a = self.result.find_one({'name': 'counter'})
+            result_grid.add_widget(Label(text = "Number of Voters", font_size = 32))
+            result_grid.add_widget(Label(text = a['votes'], font_size = 32))
             scrollbar = ScrollView()
             scrollbar.add_widget(result_grid)
             result = Popup(title = "Results", content = scrollbar)
@@ -265,11 +255,9 @@ class EVMApp(App):
             self.result.update_many({'name': {'$exists': True}}, {'$set': {'votes': 0}})
             p.content.text = ""
         elif passcode == "factoryreset":
-            db = anydbm.open(self.path, "w")
-            for key in list(db):
-                del db[key]
-            db.close()
+            self.database.drop()
             p.content.text = ""
+            UpdateEVM().Update()
         elif passcode == "settings":
             self.settings_func(p)
             p.content.text = ""
