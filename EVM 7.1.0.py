@@ -60,7 +60,6 @@ class EVMApp(App):
                 self.candidates.append(s)
         self.color = ""
         self.post = None
-        self.path = ""
         self.im_path = ""
         self.school = ""
         self.code1 = ""
