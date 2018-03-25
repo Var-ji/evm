@@ -7,18 +7,26 @@ from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.image import Image
 import anydbm, sys
+import pymongo
 from kivy.config import Config, ConfigParser
 from kivy.uix.settings import Settings
 from kivy.uix.colorpicker import ColorPicker
 from kivy.uix.scrollview import ScrollView
+from operator import itemgetter
+from functools import partial
 
 Config.set('kivy', 'exit_on_escape', 0)
-
 
 class EVMApp(App):
     def __init__(self, **kwargs):
         super(EVMApp, self).__init__(**kwargs)
         self.number = None
+        self.evmgrid = None
+        
+        self.client = pymongo.MongoClient("mongodb://localhost:27017")
+        self.database = self.client.Database
+        self.result = None
+        
         try:
             db = anydbm.open("config.db", "r")
             self.number = int(db["number"])
@@ -50,7 +58,6 @@ class EVMApp(App):
                 self.temp = self.temp + s + ";"
                 self.buttons.append(Button(text = s, font_size = 24))
                 self.candidates.append(s)
-        self.counter = None
         self.color = ""
         self.post = None
         self.path = ""
@@ -168,29 +175,18 @@ class EVMApp(App):
              s = ""
              for i in self.candidates:
                  s = s + i + ";"
-             db["names"] = s
+             db["candidates"] = s
              db.close()
+        self.result = self.database[self.post]
         try:
-            db = anydbm.open(self.path)
-            try:
-                count = int(db[self.counter])
-                for i in range(number):
-                    s = "Candidate " + str(i)
-                    c = db[s]
-            except:
-                count = 0
-                for i in range(self.number):
-                    s = "Candidate " + str(i)
-                    db[s] = "0"
-                db.close()
-        except:
-                db = anydbm.open(self.path, "c")
-                for i in range(self.number):
-                    s = "Candidate " + str(i)
-                    db[s] = "0"
-                db[self.counter] = "0"
-                count = 0
-                db.close()
+            c = self.result.find_one({"name": "counter"})
+            for i in self.candidates:
+                s = self.result.find_one({"name": i})
+                if s == None:
+                    raise IOError
+        except IOError:
+            for i in self.candidates:
+                self.result.insert_one({"name": i, "votes":0})
 
     def settings_change(self, event, config, section, key, value):
         if key == "school":
@@ -214,25 +210,22 @@ class EVMApp(App):
 
        
     def save_settings(self, setting):
-        db = anydbm.open("config.db", "c")
-        db["names"] = self.temp
+        db = anydbm.open("config.db", "w")
+        db["candidates"] = self.temp
         db["number"] = str(self.number)
         db["post"] = self.post
         db["color"] = self.color
         db["school"] = self.school
         db["path"] = self.path
         db["image"] = self.im_path
-        db["juniors"] = self.code1
+        db["voters"] = self.code1
         db["results"] = self.code3
         db.close()
         self.close_settings()
         UpdateEVM().Update()
-        '''info_l = Label(text = "The configuration settings have been saved.\nPlease restart the program to apply all saved changes.\nPress Escape to close the settings.")
-        info = Popup(title = "Configuration saved", content = info_l)
-        info.open()'''
 
 
-    def settings_func(self, p, evmgrid):
+    def settings_func(self, p):
         s = Settings()
         config = ConfigParser()
         try:
@@ -246,7 +239,7 @@ class EVMApp(App):
         setting.open()
 
 
-    def messageShow(self, passcode, p, evmgrid):
+    def messageShow(self, passcode, p):
         if passcode == self.code1:
             self.vt = 1
             p.dismiss()
@@ -254,24 +247,22 @@ class EVMApp(App):
             p.dismiss()
             sys.exit()
         elif passcode == self.code3:
-            db = anydbm.open(self.path)
+            res = list()
             result_grid = GridLayout(cols = 2, padding = [50, 50, 50, 50], spacing = [5, 50], size_hint_y = None)
-            db.close()
-            gres = GridLayout(rows = 3)
-            l1 = Label(text = self.can1 + " : " + a, font_size = 28)
-            l2 = Label(text = self.can2 + " : " + b, font_size = 28)
-            l3 = Label(text = "Number of voters : " + c, font_size = 28)
-            gres.add_widget(l1)
-            gres.add_widget(l2)
-            gres.add_widget(l3)
-            result = Popup(title = "Results", content = gres)
+            for btn in self.buttons:
+                a = self.result.find_one({'name': btn.text})
+                res.append(a)
+            res = sorted(res, key = itemgetter('votes'), reverse = True)
+            for doc in res:
+                result_grid.add_widget(Label(text = doc['name'], font_size = 24))
+                result_grid.add_widget(Label(text = str(doc['votes']), font_size = 24))
+            scrollbar = ScrollView()
+            scrollbar.add_widget(result_grid)
+            result = Popup(title = "Results", content = scrollbar)
             p.content.text = ""
             result.open()
         elif passcode == "resetallvotes":
-            db = anydbm.open(self.path, "w")
-            for key in list(db):
-                db[key] = "0"
-            db.close()
+            self.result.update_many({'name': {'$exists': True}}, {'$set': {'votes': 0}})
             p.content.text = ""
         elif passcode == "factoryreset":
             db = anydbm.open(self.path, "w")
@@ -280,7 +271,7 @@ class EVMApp(App):
             db.close()
             p.content.text = ""
         elif passcode == "settings":
-            self.settings_func(p, evmgrid)
+            self.settings_func(p)
             p.content.text = ""
         elif passcode == "colorpicker":
             color_w = ColorPicker()
@@ -304,7 +295,7 @@ class EVMApp(App):
         Window.window_state = "maximized"
         Window.bind(on_request_close = self.close_event)
         grid = GridLayout(cols = 1, padding = [50, 50, 50, 50], spacing = [5, 50], size_hint_y = None, height = (self.number+3)*150)
-        evmgrid = ScrollView()
+        self.evmgrid = ScrollView()
         titlegrid = GridLayout(cols = 2, padding = [250, 0, 450, 0])
         try:
             image = Image(source = self.im_path)
@@ -319,30 +310,25 @@ class EVMApp(App):
         for i in self.buttons:
             grid.add_widget(i)
         for i in range(self.number):
-            self.buttons[i].bind(on_press = lambda *f:self.results(self.buttons[i].text, evmgrid))
-        evmgrid.add_widget(grid)
-        return evmgrid
+            button_callback = partial(self.results, self.buttons[i].text)
+            self.buttons[i].bind(on_press = button_callback)
+        self.evmgrid.add_widget(grid)
+        return self.evmgrid
 
-    def show_popup(self, evmgrid):
+    def show_popup(self):
         t1 = TextInput(password = True, multiline = False, write_tab = False)
         p = Popup(title = "Enter password", auto_dismiss = False, content = t1, size_hint=(None, None), size=(400, 105), title_align = 'center', separator_height = 3)
-        t1.bind(on_text_validate = lambda *func: self.messageShow(t1.text, p, evmgrid))
+        t1.bind(on_text_validate = lambda *func: self.messageShow(t1.text, p))
         p.bind(on_open = self.on_popup_parent)
         p.open()
 
-    def results(self, name, evmgrid):
+    def results(self, text, event):
         if self.vt == 0:
             pass
         else:
-            db = anydbm.open(self.path, "w")
-            v1 = db[name]
-            v1 = float(v1) + self.vt
-            db[name] = str(v1)
-            count = db[self.counter]
-            count = int(count) + 1
-            db[self.counter] = str(count)
-            db.close()
-        self.show_popup(evmgrid)
+            self.result.update_one({'name': text}, {'$inc': {'votes': 1}})
+            self.result.update_one({'name': 'counter'}, {'$inc': {'votes': 1}})
+        self.show_popup()
 
 
 class UpdateEVM:
